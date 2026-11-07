@@ -103,6 +103,27 @@ def comprobar_unidades(texto_json):
     return len(malas), unidades
 
 
+def aviso_instancia_nueva():
+    """Una instancia recien instalada no puede llenar un rate(...[5m]).
+
+    En una instalacion nueva, media verificacion sale 'SIN DATOS' y no hay nada
+    roto: las consultas con rate() sobre 5 minutos necesitan 5 minutos de
+    historico. Comprobado montando el stack desde cero: 18 de 59 consultas
+    vacias a los pocos segundos, todas las de rate().
+    """
+    res, err = consulta("time() - process_start_time_seconds{job=\"prometheus\"}")
+    if err or not res:
+        return
+    try:
+        seg = float(res[0]["value"][1])
+    except (KeyError, IndexError, ValueError):
+        return
+    if seg < 600:
+        print("\n   AVISO: Prometheus lleva solo %d minuto(s) en marcha." % int(seg // 60))
+        print("          Las consultas con rate(...[5m]) van a salir vacias porque aun no")
+        print("          hay historico. No esta roto: vuelve a correr esto en 10 minutos.")
+
+
 def paneles_de(d):
     for p in d.get("panels", []):
         yield p
@@ -119,6 +140,8 @@ def main():
     print(" verificar-dashboard.py  ->  %s" % JSON)
     print(" dashboard: %s (uid %s)" % (dash.get("title"), dash.get("uid")))
     print("=" * 70)
+
+    aviso_instancia_nueva()
 
     print("\n--- Unidades")
     unidades_malas, _ = comprobar_unidades(crudo)

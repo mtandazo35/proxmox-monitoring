@@ -262,6 +262,10 @@ ssh root@<IP_STACK> 'VAR_MAQUINA=<maquina-encendida> python3 /root/verificar-das
     /var/lib/grafana/dashboards/proxmox-maquina.json'
 ```
 
+**En una instalación recién hecha, media verificación va a salir vacía y no hay nada roto:**
+las consultas con `rate(...[5m])` necesitan cinco minutos de histórico que aún no existen.
+El script lo detecta y lo avisa; se vuelve a correr diez minutos después.
+
 También valida **cada id de unidad** contra el build de Grafana. Si una unidad no existe,
 Grafana no da error: escribe su nombre en crudo detrás del número (`634483 dtdurationhms`
 en vez de `7d 08:14:43`).
