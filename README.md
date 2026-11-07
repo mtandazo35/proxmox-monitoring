@@ -56,6 +56,8 @@ solo en ese sitio.**
 | `nodo/pve-fsinfo-collector.py` | *(lo instala el anterior)* | disco real de dentro de cada VM, vía su `qemu-guest-agent` |
 | `stack/crear-lxc.sh` | **en el nodo Proxmox**, opcional | atajo para crear un LXC donde meter el stack. **No hace falta si eliges otra cosa** |
 | `stack/install-stack.sh` | **en la máquina del stack** | Prometheus + pve-exporter + Grafana, y provisiona los dashboards |
+| `stack/actualizar-dashboards.sh` | **en la máquina del stack** | lleva paneles y alertas a Grafana sin tocar paquetes ni contraseñas |
+| `stack/alertas.yaml` | **se copia a la máquina del stack** | las seis reglas de alerta |
 | `stack/verificar.sh` | **en la máquina del stack** | comprueba que hay datos, no solo servicios arrancados |
 | `stack/verificar-dashboard.py` | **en la máquina del stack** | lanza cada consulta de cada panel |
 | `dashboards/*.json` | **se copian a la máquina del stack** | los paneles; los lee Grafana al arrancar |
@@ -554,6 +556,77 @@ Si la variable **Nodo** llega vacía, un filtro `instance=""` no casa con nada. 
 `0 encendidas` y `0 apagadas` a la vez es mentira, no un dato. Por eso el relleno de cero se
 hace con `or (count(pve_guest_info{instance="$nodo"}) * 0)`: solo aparece si el nodo existe
 de verdad, y si no, el panel dice **"No data"**, que es la verdad.
+
+## Alertas
+
+Sin esto, el montaje es una pantalla que hay que mirar. Las reglas están en
+`stack/alertas.yaml` y se provisionan en Grafana; no se crean a mano.
+
+| Regla | Salta cuando | Espera |
+|---|---|---|
+| **Objetivo caído** | `up == 0` en cualquier job | 5 min |
+| **Storage > 85%** | un storage del nodo se llena | 10 min |
+| **Filesystem del nodo > 90%** | se llena el disco del **hypervisor** | 10 min |
+| **RAM del nodo > 90%** | antes de que llegue el OOM killer | 10 min |
+| **Máquina con arranque automático apagada** | tiene `onboot` y no está encendida | 10 min |
+| **Presión de CPU sostenida** | PSI de CPU > 40% | 15 min |
+
+**"Objetivo caído" cubre también al propio stack.** Si `pve-exporter` se cae, el dashboard no
+da error: se queda quieto con el último dato bueno. Esa es la alerta que avisa de que el
+monitoreo se quedó ciego.
+
+**La de presión usa PSI y no porcentaje de CPU a propósito.** Un nodo al 100% puede ir fino y
+uno al 40% estar ahogando a todo el mundo. Lo que duele es la espera, no el uso.
+
+### Por dónde te avisa: eso lo configuras tú, una vez
+
+`alertas.yaml` define **cuándo** salta cada alerta, no **por dónde** te llega. El canal lleva
+un token de Telegram o unas credenciales de SMTP, y eso **no puede vivir en un repositorio
+público**. Se configura una sola vez en **Grafana → Alerting → Contact points**.
+
+Hasta que lo hagas, las alertas se ven y cambian de color en *Alerting → Alert rules*, pero no
+te escriben a ningún sitio.
+
+### El detalle que convierte las alertas en ruido
+
+Una regla cuya consulta **se queda vacía cuando todo va bien** —como `up == 0`— necesita
+`noDataState: OK`. Con el valor por omisión, Grafana levanta una alerta `DatasourceNoData`
+**permanente**, y una alerta que está siempre encendida es la forma más segura de que nadie
+vuelva a mirar ninguna.
+
+Las que siempre devuelven un número (storage, filesystem, RAM, presión) se quedan con
+`NoData`, porque ahí *sin datos* sí significa que el objetivo dejó de responder.
+
+## Actualizar paneles y alertas sin reinstalar
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mtandazo35/proxmox-monitoring/main/instalar.sh | bash -s -- dashboards
+```
+
+Copia los `.json` y `alertas.yaml`, valida antes de copiar, reinicia Grafana y **comprueba
+contra su base de datos qué reglas ha ingerido de verdad** — que el fichero esté no significa
+que Grafana lo acepte.
+
+**No toca paquetes, ni configuración, ni la contraseña.** Esto existe porque antes la única
+forma de llevar un panel nuevo era reejecutar `install-stack.sh`, que **regenera la contraseña
+de admin**: actualizar un gráfico te echaba de tu propio panel.
+
+## Lo que se tira a propósito
+
+De 4300 series, **1320 no se usaban en ningún panel**:
+
+| Métrica | Series | Qué es |
+|---|---|---|
+| `node_systemd_unit_state` | ~1000 por nodo | una serie por unidad de systemd **y por estado** |
+| `pve_ha_state` + `pve_lock_state` | ~285 | una por cada estado posible de cada máquina, a cero casi siempre |
+
+Se descartan con `metric_relabel_configs` **al guardar, no al scrapear**: así no hay que tocar
+el hypervisor. Si algún día hacen falta, se quita la regla y vuelven.
+
+La retención tiene **techo de tiempo y de tamaño**. Solo por tiempo no protege de nada: si la
+flota crece, 15 días pueden no caber, y **con el disco lleno Prometheus se para**. El techo se
+calcula como la mitad del disco libre, con un mínimo de 1 GB, porque Prometheus necesita sitio
+para compactar.
 
 ## Deshacer
 
