@@ -266,6 +266,127 @@ También valida **cada id de unidad** contra el build de Grafana. Si una unidad 
 Grafana no da error: escribe su nombre en crudo detrás del número (`634483 dtdurationhms`
 en vez de `7d 08:14:43`).
 
+## El usuario y el token de la API de Proxmox
+
+`install-nodo.sh` lo crea todo solo, pero conviene saber **qué** crea, porque es lo único que
+este montaje añade a la configuración de Proxmox. Y si prefieres hacerlo a mano, aquí está.
+
+### Qué hace falta y por qué
+
+`pve-exporter` consulta la API de Proxmox para sacar el detalle por máquina (CPU, RAM, disco,
+encendida o apagada). Para eso necesita **credenciales**. Se usa un **token de API** y no una
+contraseña porque un token se revoca solo, no sirve para entrar por la interfaz web, y se le
+puede dar un permiso concreto.
+
+| Qué | Valor | Por qué |
+|---|---|---|
+| Usuario | `prometheus@pve` | realm `pve`, no `pam`: no es un usuario del sistema operativo, no puede entrar por SSH |
+| Rol | `PVEAuditor` sobre `/` | el rol de **solo lectura** de Proxmox: ve todo el datacenter, no cambia nada |
+| Token | `monitoring` | el que usa el exporter |
+| Privilege separation | **desactivada** | sin esto el token no hereda nada |
+
+**El detalle que arruina la instalación si se falla:** un token se crea por omisión con
+*privilege separation* **activada**, y entonces **no hereda los permisos del usuario**: tiene
+los suyos propios, que son ninguno. El exporter responde, el `:9221` contesta, no hay ni un
+error en ningún log… y **todas las métricas salen a cero**. Por eso el script lo crea con
+`--privsep 0` y luego **comprueba de verdad** que lee y que no escribe.
+
+### Lo que ejecuta el script
+
+```bash
+pveum user add prometheus@pve --comment "Solo lectura para prometheus-pve-exporter"
+pveum acl modify / --users prometheus@pve --roles PVEAuditor
+pveum user token add prometheus@pve monitoring --privsep 0 --output-format json
+```
+
+La última línea devuelve el **valor del token**, que es la parte secreta. **Solo se muestra una
+vez**: Proxmox no lo guarda en claro y no hay forma de volver a leerlo. Si lo pierdes, se borra
+el token y se crea otro — que es justo lo que hace el script si lo vuelves a ejecutar.
+
+Después comprueba las dos mitades, porque una sola no basta:
+
+```bash
+# 1. que LEE: tiene que devolver la lista de nodos
+curl -k -H "Authorization: PVEAPIToken=prometheus@pve!monitoring=<VALOR>" \
+     https://127.0.0.1:8006/api2/json/nodes
+
+# 2. que NO ESCRIBE: tiene que devolver 403
+curl -k -X POST -H "Authorization: PVEAPIToken=prometheus@pve!monitoring=<VALOR>" \
+     https://127.0.0.1:8006/api2/json/nodes/$(hostname)/stopall
+```
+
+Si el primero no devuelve nodos, el token no hereda permisos. Si el segundo **no** devuelve
+403, la ACL está mal y ese token puede apagarte las máquinas.
+
+### Hacerlo a mano desde la interfaz web
+
+Si prefieres no correr el script, o quieres entender qué toca:
+
+1. **Datacenter → Permissions → Users → Add**: usuario `prometheus`, realm `Proxmox VE
+   authentication server` (`pve`). Sin contraseña: no la va a usar.
+2. **Datacenter → Permissions → Add → User Permission**: *Path* `/`, *User* `prometheus@pve`,
+   *Role* `PVEAuditor`. Eso es lo que le da la lectura de todo el datacenter.
+3. **Datacenter → Permissions → API Tokens → Add**: *User* `prometheus@pve`, *Token ID*
+   `monitoring`, y **desmarca `Privilege Separation`**. Este es el paso que se falla.
+4. Copia el **Secret** que aparece: es el `<VALOR>`. **No se vuelve a mostrar.**
+
+Con eso tienes los tres datos del paso 3:
+
+```
+IP del nodo     : la IP de tu nodo Proxmox
+Usuario y token : prometheus@pve!monitoring
+Valor del token : el Secret del punto 4
+```
+
+### Qué NO hace falta
+
+- **Nada de `root@pam`.** Hay recetas por ahí que usan un token de root con la separación de
+  privilegios desactivada: eso es un token con permiso para destruir el datacenter guardado en
+  un fichero de un servidor de monitoreo. Aquí no.
+- **Ninguna credencial dentro de las máquinas vigiladas.** El token es del nodo.
+- **Ningún puerto nuevo abierto hacia fuera.** El exporter consulta la API; nadie entra.
+
+## Grafana: qué se instala y cómo entrar
+
+Grafana **no va en el hypervisor**: lo instala `install-stack.sh` en la máquina del stack, en
+su paso 6. Del repositorio oficial, no del de Debian, que va muy por detrás:
+
+```
+clave  -> /etc/apt/keyrings/grafana.gpg      (desde https://apt.grafana.com/gpg.key)
+origen -> /etc/apt/sources.list.d/grafana.list
+paquete-> apt install grafana
+```
+
+Se escribe en un `.list` a propósito: `apt` solo lee `*.list` y `*.sources`, así que un
+`.bak` quedaría inerte y llevaría a buscar el fallo donde no está.
+
+**Queda configurado solo**, sin tocar nada a mano:
+
+| | |
+|---|---|
+| Datasource | Prometheus en `http://127.0.0.1:9090`, uid `pmx-prometheus`, marcado por omisión |
+| Dashboards | los tres `.json`, provisionados desde `/var/lib/grafana/dashboards` |
+| Zona horaria | `default_timezone = America/Guayaquil` en `grafana.ini` |
+| Puerto | `:3000` |
+
+**La contraseña de admin se genera al azar** y se imprime **una sola vez** al terminar el
+instalador, junto a la URL. Al gestor de contraseñas: no queda en ningún sitio legible. Grafana
+te la hará cambiar en el primer acceso, que es lo correcto.
+
+¿La perdiste? Desde dentro de la máquina del stack:
+
+```bash
+grafana cli --homepath /usr/share/grafana admin reset-admin-password '<NUEVA>'
+systemctl restart grafana-server
+```
+
+En versiones más antiguas el binario se llama `grafana-cli`; el instalador prueba los dos.
+
+**Los dashboards son de solo lectura en la práctica:** están provisionados desde fichero, así
+que si los editas por la interfaz, el cambio se pierde cuando Grafana recarga la provisión. Lo
+que se toca es la plantilla `.py` del repo y se regenera. Si quieres trastear sin perder nada,
+haz **Save as…** con otro nombre y ese sí es tuyo.
+
 ## El dashboard
 
 Una sola pantalla, en este orden:
