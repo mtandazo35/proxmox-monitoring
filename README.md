@@ -99,7 +99,65 @@ producción, el stack debería estar fuera.
 Si eliges LXC, `crear-lxc.sh` te lo monta. Si eliges VM o una máquina existente, **aquí no hay
 script y no hace falta**: prepara la máquina como prepares cualquier otra y pasa al paso 3.
 
-## Instalación
+## ⚡ Instalación rápida (one-liner)
+
+Un comando por pieza. Trae el repo a `/root/proxmox-monitoring` y lanza lo que le pidas.
+Cada uno **comprueba que lo estás ejecutando donde toca** y aborta si no.
+
+### En el nodo Proxmox
+
+**1. El nodo** — node-exporter, usuario `PVEAuditor` y token. Imprime los tres datos del paso 3:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mtandazo35/proxmox-monitoring/main/instalar.sh | bash -s -- nodo
+```
+
+Con UFW activo, pásale la IP de la máquina del stack para que abra el `:9100`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mtandazo35/proxmox-monitoring/main/instalar.sh | bash -s -- nodo 192.0.2.20
+```
+
+**2. Los recolectores por máquina** — PSI, RAM real y disco de dentro de las VM:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mtandazo35/proxmox-monitoring/main/instalar.sh | bash -s -- colectores
+```
+
+**3. Un LXC para el stack** *(opcional: solo si eliges LXC)*. `IP` y `GW` son obligatorias:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mtandazo35/proxmox-monitoring/main/instalar.sh | IP=192.0.2.20/24 GW=192.0.2.1 VLAN=78 bash -s -- lxc
+```
+
+### En la máquina del stack
+
+Sea un LXC, una VM o un servidor aparte. Los tres datos los imprimió el paso 1:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mtandazo35/proxmox-monitoring/main/instalar.sh | bash -s -- stack <IP_NODO> 'prometheus@pve!monitoring' '<VALOR_DEL_TOKEN>'
+```
+
+**Comprobar que hay datos** (solo lectura; corre las dos verificaciones y suma los fallos):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mtandazo35/proxmox-monitoring/main/instalar.sh | bash -s -- verificar
+```
+
+### Lo que conviene saber antes de pegar eso en un servidor
+
+- **El token del paso `stack` va en la línea de comandos**: es visible en `ps` mientras corre y
+  queda en el historial del shell. Es lo mismo que pasarlo por `scp`. Si no te vale, clona el
+  repo y lanza `install-stack.sh` leyendo el token de un fichero.
+- **Los desinstaladores no se lanzan así**: preguntan antes de borrar, y con `curl | bash` la
+  entrada estándar es el propio script. Para esos, clona y ejecútalos a mano.
+- **`PROBAR=1`** trae el repo y dice qué ejecutaría, sin ejecutarlo:
+  `curl -fsSL ... | PROBAR=1 bash -s -- nodo`
+- **`RAMA=otra`** para probar una rama distinta de `main`.
+- Si prefieres no canalizar nada a `bash`, clona y corre los scripts a mano: es exactamente lo
+  mismo, y está más abajo.
+
+## Instalación paso a paso
 
 ### 1. En el nodo Proxmox
 
