@@ -104,41 +104,54 @@ script y no hace falta**: prepara la máquina como prepares cualquier otra y pas
 Un comando por pieza. Trae el repo a `/root/proxmox-monitoring` y lanza lo que le pidas.
 Cada uno **comprueba que lo estás ejecutando donde toca** y aborta si no.
 
-### En el nodo Proxmox
-
-**1. El nodo** — node-exporter, usuario `PVEAuditor` y token. Imprime los tres datos del paso 3:
+### Paso 1 — en el nodo Proxmox (un solo comando)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mtandazo35/proxmox-monitoring/main/instalar.sh | bash -s -- nodo
 ```
 
-Con UFW activo, pásale la IP de la máquina del stack para que abra el `:9100`:
+Eso es **todo lo que se instala en el hypervisor**: node-exporter, el usuario `prometheus@pve`
+con rol `PVEAuditor`, su token, y los dos recolectores con sus timers. Al terminar imprime
+**los tres datos que necesitarás en el paso 3** y te explica qué hacer a continuación.
+
+Si el nodo tiene UFW activo, pásale la IP de la máquina del stack para que le abra el `:9100`.
+Se puede volver a correr más tarde, cuando ya sepas esa IP:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mtandazo35/proxmox-monitoring/main/instalar.sh | bash -s -- nodo 192.0.2.20
 ```
 
-**2. Los recolectores por máquina** — PSI, RAM real y disco de dentro de las VM:
+*(`colectores` existe por separado solo para reinstalarlos sueltos; `nodo` ya los pone.)*
+
+### Paso 2 — crear la máquina donde vivirá el stack
+
+**El stack NO se instala en el hypervisor.** Necesita una máquina aparte: un **contenedor
+LXC**, una **VM**, o un **servidor que ya tengas**. Lo que elijas, con tal de que cumpla los
+requisitos de *Dónde poner el stack*.
+
+Si eliges **LXC** en el propio nodo, hay atajo (`IP` y `GW` son obligatorias, `VLAN` solo si tu
+red la usa):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mtandazo35/proxmox-monitoring/main/instalar.sh | bash -s -- colectores
+curl -fsSL https://raw.githubusercontent.com/mtandazo35/proxmox-monitoring/main/instalar.sh | IP=<IP_LIBRE/24> GW=<TU_GATEWAY> VLAN=<N> bash -s -- lxc
 ```
 
-**3. Un LXC para el stack** *(opcional: solo si eliges LXC)*. `IP` y `GW` son obligatorias:
+Si eliges **VM** o una **máquina que ya tienes**, aquí no hay nada que correr: créala como
+crees tus máquinas, con Debian 12 o 13. En una VM, déjale el `qemu-guest-agent` activado y esta
+misma herramienta verá también el disco real de dentro de ella.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/mtandazo35/proxmox-monitoring/main/instalar.sh | IP=192.0.2.20/24 GW=192.0.2.1 VLAN=78 bash -s -- lxc
-```
+### Paso 3 — el stack, dentro de esa máquina
 
-### En la máquina del stack
-
-Sea un LXC, una VM o un servidor aparte. Los tres datos los imprimió el paso 1:
+Los tres datos los imprimió el paso 1. El propio paso 1 te deja este comando ya montado, con
+los valores sustituidos:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mtandazo35/proxmox-monitoring/main/instalar.sh | bash -s -- stack <IP_NODO> 'prometheus@pve!monitoring' '<VALOR_DEL_TOKEN>'
 ```
 
-**Comprobar que hay datos** (solo lectura; corre las dos verificaciones y suma los fallos):
+### Paso 4 — comprobar que hay datos
+
+Solo lectura. Corre las dos verificaciones y suma los fallos:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mtandazo35/proxmox-monitoring/main/instalar.sh | bash -s -- verificar
@@ -185,7 +198,7 @@ Lo que decidiste en el apartado anterior. Si es un **LXC** en el propio nodo, ha
 
 ```bash
 scp stack/crear-lxc.sh root@<IP_NODO>:/root/
-ssh root@<IP_NODO> 'chmod +x /root/crear-lxc.sh && IP=192.0.2.20/24 GW=192.0.2.1 VLAN=78 /root/crear-lxc.sh'
+ssh root@<IP_NODO> 'chmod +x /root/crear-lxc.sh && IP=192.0.2.20/24 GW=192.0.2.1 VLAN=<N> /root/crear-lxc.sh'
 ```
 
 `IP` y `GW` son obligatorias a propósito: una IP por defecto acaba creando el contenedor en la

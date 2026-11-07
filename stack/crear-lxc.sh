@@ -17,7 +17,7 @@
 #   IP y GW son OBLIGATORIAS: no hay valor por omision a proposito. Una IP
 #   por defecto acaba creando el contenedor en la red de otro.
 #
-#   IP=192.0.2.20/24 GW=192.0.2.1 VLAN=78 ./crear-lxc.sh
+#   IP=192.0.2.20/24 GW=192.0.2.1 VLAN=<N> ./crear-lxc.sh
 #   VMID=112 NOMBRE=pmx-monitor IP=192.0.2.20/24 GW=192.0.2.1 ./crear-lxc.sh
 #
 # Rollback: pct stop <VMID> && pct destroy <VMID>
@@ -53,7 +53,7 @@ echo
 if [ -z "$IP" ] || [ -z "$GW" ]; then
     echo "ABORTO: faltan IP y/o GW. No hay valor por omision a proposito:" >&2
     echo "        una IP por defecto acaba creando el contenedor en la red de otro." >&2
-    echo "        Ej.: IP=192.0.2.20/24 GW=192.0.2.1 VLAN=78 ./crear-lxc.sh" >&2
+    echo "        Ej.: IP=192.0.2.20/24 GW=192.0.2.1 VLAN=<N> ./crear-lxc.sh" >&2
     exit 1
 fi
 
