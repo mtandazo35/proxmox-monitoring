@@ -39,7 +39,12 @@ groups:
             esta caido o le han cerrado el puerto. Si es 'prometheus', el problema
             esta en la propia maquina del stack.
         isPaused: false
-        noDataState: NoData
+        # OJO: OK, no NoData. 'up == 0' no devuelve NADA cuando todo va bien, y
+        # con noDataState=NoData Grafana levanta una alerta DatasourceNoData
+        # permanente: ruido constante que acaba haciendo que nadie mire las
+        # alertas. Visto evaluando esta misma regla con los tres objetivos sanos.
+        # Vale para cualquier regla cuya consulta se queda vacia en el caso bueno.
+        noDataState: OK
         execErrState: Error
         data:
           - refId: A
