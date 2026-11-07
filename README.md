@@ -81,11 +81,47 @@ ni le importa si está dentro de un contenedor, de una VM o de una máquina fís
 **Requisitos de esa máquina, sea cual sea:**
 
 - Debian 12 o 13, con acceso `root`
-- 2 núcleos y ~1,5 GB de RAM
-- 8 GB de disco para empezar. Con un nodo pequeño, 15 días de retención ocupan ~1 GB; con una
-  flota de cien y pico máquinas hay que contar bastante más y poner un techo de tamaño
+- **2 núcleos y 1,5 GB de RAM** (lo que usa `crear-lxc.sh` por defecto). Abajo está el desglose
+  medido y cuándo hay que subirlo
+- 8 GB de disco. **No es el histórico lo que pesa**: Grafana se lleva 620 MB de
+  `/var/lib/grafana` recién instalada —son los plugins de datasource que trae el paquete— y la
+  base de Prometheus iba por 37 MB tras un día con un nodo, o sea ~550 MB para los 15 días de
+  retención. El techo de tamaño de la retención lo calcula el instalador solo
 - salida a internet, para los paquetes de Debian y el repositorio de Grafana
 - que alcance el `:9100` y el `:8006` del nodo
+
+### Cuánta RAM hace falta, medido
+
+Esto no es una estimación: son las cifras del laboratorio —**un nodo, 12 invitados, 2.873
+series activas**— leídas del cgroup de cada servicio (`systemctl show -p MemoryCurrent`):
+
+| Servicio | RAM | Por qué |
+|---|---|---|
+| **Grafana** | **470 MB** | el que más come, y con diferencia: el paquete arranca unos ocho plugins de datasource como procesos Go aparte (Loki, Elasticsearch, InfluxDB, Pyroscope…) aunque no uses ninguno |
+| **Prometheus** | **68 MB** | con 2.873 series activas |
+| **pve-exporter** | **45 MB** | consulta la API del nodo cada 30 s |
+
+Con los tres en marcha, `free -m` dentro del contenedor marcaba **374 MB usados de 1.536**, y
+el resto —1,1 GB— en caché de disco, que es justo lo que le viene bien a Prometheus. Así que
+**1,5 GB va holgado para un nodo y sobra para dos o tres.**
+
+**Cuándo hay que subirla.** De los tres, el único que crece es Prometheus, y crece con el
+número de series activas. El reparto real de esas 2.873:
+
+| Job | Series | Qué cuesta añadir |
+|---|---|---|
+| `node` | 1.891 | **cada nodo nuevo pesa ~1.900 series**: el node-exporter del host es el grueso |
+| `prometheus` | 728 | fijas, se pagan una vez |
+| `pve` | 254 | **cada invitado, ~20 series** de detalle de la API |
+
+Es decir: lo que mueve la aguja es **cuántos nodos vigilas**, no cuántas máquinas tienen. Un
+nodo con 50 VMs sigue siendo ~1.900 + 1.000 series; diez nodos ya son ~21.000. Con esa regla,
+**hasta 3-4 nodos 1,5 GB aguanta; a partir de ahí 2 GB, y para una flota de diez nodos o más,
+4 GB** y revisar el techo de tamaño de la retención.
+
+**Si el stack va en un LXC, no reserves de más.** La memoria de un contenedor es un límite de
+cgroup, no una reserva: lo que el stack no use se queda disponible para el host. En una VM, en
+cambio, sin `balloon` esos 1,5 GB quedan apartados aunque estén libres.
 
 | Opción | Cuándo elegirla | Qué cuesta |
 |---|---|---|
@@ -208,7 +244,9 @@ red de otro. Antes de crear nada comprueba que el VMID esté libre, que **la IP 
 ping**, y que al host le queden al menos 512 MB de margen.
 
 Valores por defecto: VMID `111`, 2 núcleos, 1536 MB, 8 GB en `local-lvm`. Se cambian por
-variable de entorno (`RAM=1024 VMID=112 NOMBRE=monitor ./crear-lxc.sh`).
+variable de entorno (`RAM=1024 VMID=112 NOMBRE=monitor ./crear-lxc.sh`). Los 1536 MB son los
+del desglose medido de arriba: **no bajes de 1 GB** —Grafana sola se lleva 470 MB— y súbelos
+si vas a vigilar más de 3-4 nodos.
 
 Si es una **VM o una máquina que ya tienes**, no hay nada que correr aquí: basta con que
 cumpla los requisitos de arriba.
