@@ -126,6 +126,16 @@ echo "    OK  $TPL"
 # ------------------------------------------------- 3. crear
 echo
 echo "--- 3. Creando el contenedor"
+# La VLAN es opcional: hay redes que no la usan. El 'tag=' solo se pone si hay
+# VLAN, porque un "tag=," vacio hace que pct create falle con un error de
+# formato que no dice de donde viene.
+NET0="name=eth0,bridge=${BRIDGE}"
+if [ -n "$VLAN" ]; then
+    NET0="${NET0},tag=${VLAN}"
+fi
+NET0="${NET0},ip=${IP},gw=${GW}"
+echo "    net0: $NET0"
+
 # nesting=1 no es por capricho: el systemd 257 de Debian 13 lo necesita
 # ("WARN: Systemd 257 detected. You may need to enable nesting"). Sin el,
 # el contenedor arranca a medias o no arranca.
@@ -135,7 +145,7 @@ pct create "$VMID" "$TPL" \
     --memory "$RAM" \
     --swap "$SWAP" \
     --rootfs "${ALM_DISCO}:${DISCO}" \
-    --net0 "name=eth0,bridge=${BRIDGE},tag=${VLAN},ip=${IP},gw=${GW}" \
+    --net0 "$NET0" \
     --nameserver "$DNS" \
     --ostype debian \
     --unprivileged 1 \
@@ -171,7 +181,7 @@ if [ "$LISTO" -eq 1 ]; then
     echo "    OK  el contenedor resuelve DNS y tiene salida"
 else
     echo "    FALLO: sin salida a internet desde el contenedor." >&2
-    echo "    Comprueba la VLAN $VLAN y el gateway $GW:" >&2
+    echo "    Comprueba el bridge $BRIDGE, la VLAN ${VLAN:-(ninguna)} y el gateway $GW:" >&2
     pct exec "$VMID" -- ip -4 a show eth0 2>/dev/null >&2
     pct exec "$VMID" -- ip route 2>/dev/null >&2
     echo "    Para deshacer: pct stop $VMID && pct destroy $VMID" >&2
