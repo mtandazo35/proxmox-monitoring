@@ -13,6 +13,8 @@
 #               sueltos. 'nodo' ya los incluye.
 #   lxc         crea un LXC para el stack (OPCIONAL)         -> EN EL NODO PROXMOX
 #   stack       Prometheus + pve-exporter + Grafana          -> EN LA MAQUINA DEL STACK
+#   dashboards  solo los paneles y las alertas, sin tocar     -> EN LA MAQUINA DEL STACK
+#               paquetes ni la contrasena de Grafana
 #   verificar   comprueba que hay datos, no solo servicios   -> EN LA MAQUINA DEL STACK
 #
 # El orden normal es: 'nodo' en el hypervisor -> creas una maquina (LXC, VM o
@@ -54,6 +56,8 @@ uso() {
                requiere IP y GW:
                ... | IP=192.0.2.20/24 GW=192.0.2.1 bash -s -- lxc
    stack       <IP_NODO> <USUARIO!TOKEN> <VALOR>   en la MAQUINA DEL STACK
+   dashboards                                 en la MAQUINA DEL STACK
+               actualiza paneles y alertas sin tocar nada mas
    verificar                                  en la MAQUINA DEL STACK
 
  Variables: DESTINO (por omision /root/proxmox-monitoring), RAMA, PROBAR=1.
@@ -64,7 +68,7 @@ EOF
 }
 
 case "$PIEZA" in
-    nodo|colectores|lxc|stack|verificar) ;;
+    nodo|colectores|lxc|stack|dashboards|verificar) ;;
     ""|-h|--help|ayuda) uso ;;
     *) echo "ABORTO: pieza desconocida: '$PIEZA'" >&2; uso ;;
 esac
@@ -84,7 +88,7 @@ case "$PIEZA" in
             echo "ABORTO: '$PIEZA' va EN EL NODO PROXMOX y aqui no hay pct/qm." >&2
             exit 1
         fi ;;
-    stack|verificar)
+    stack|dashboards|verificar)
         if [ "$EN_NODO" -eq 1 ]; then
             echo "AVISO: '$PIEZA' va en la MAQUINA DEL STACK, y esto parece un nodo Proxmox."
             echo "       Si de verdad quieres el stack sobre el propio hypervisor, sigue;"
@@ -138,6 +142,7 @@ case "$PIEZA" in
     colectores) CARPETA="$DESTINO/nodo";  GUION=./install-colectores.sh ;;
     lxc)        CARPETA="$DESTINO/stack"; GUION=./crear-lxc.sh ;;
     stack)      CARPETA="$DESTINO/stack"; GUION=./install-stack.sh ;;
+    dashboards) CARPETA="$DESTINO/stack"; GUION=./actualizar-dashboards.sh ;;
     verificar)  CARPETA="$DESTINO/stack"; GUION=./verificar.sh ;;
 esac
 

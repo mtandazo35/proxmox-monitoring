@@ -1,0 +1,257 @@
+# alertas.yaml - reglas de alerta, provisionadas en Grafana.
+#
+# install-stack.sh lo copia a /etc/grafana/provisioning/alerting/alertas.yaml.
+# Grafana las carga al arrancar; no se crean a mano por la interfaz.
+#
+# OJO: esto define CUANDO salta una alerta, no POR DONDE te avisa. El canal
+# (Telegram, correo, webhook) lleva un token o un SMTP que no puede vivir en
+# un repo publico, asi que se configura una sola vez en
+#   Grafana -> Alerting -> Contact points
+# Hasta que lo hagas, las alertas se ven en Alerting -> Alert rules y cambian
+# de color, pero no te escriben a ningun sitio.
+#
+# Para editarlas: se tocan AQUI y se vuelve a provisionar. Si las cambias por
+# la interfaz, Grafana las revierte en el siguiente arranque.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: proxmox
+    folder: Proxmox
+    interval: 1m
+    rules:
+
+      # --- 1. Un objetivo deja de responder ---------------------------------
+      # Cubre las tres patas: el node-exporter del nodo, el pve-exporter y el
+      # propio Prometheus. Es la alerta que avisa de que el monitoreo se ha
+      # quedado ciego, que si no nadie nota: el dashboard simplemente se queda
+      # quieto con el ultimo dato bueno.
+      - uid: pmx-target-caido
+        title: Objetivo caido
+        condition: B
+        for: 5m
+        labels:
+          gravedad: critica
+        annotations:
+          summary: "Prometheus no consigue leer {{ $labels.job }} en {{ $labels.instance }}"
+          description: >-
+            Lleva 5 minutos sin responder. Si es el job 'node' o 'pve', o el nodo
+            esta caido o le han cerrado el puerto. Si es 'prometheus', el problema
+            esta en la propia maquina del stack.
+        isPaused: false
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: pmx-prometheus
+            model:
+              refId: A
+              instant: true
+              editorMode: code
+              expr: up == 0
+              datasource: {type: prometheus, uid: pmx-prometheus}
+          - refId: B
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              datasource: {type: __expr__, uid: __expr__}
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+
+      # --- 2. Un storage del nodo se esta llenando --------------------------
+      - uid: pmx-storage-lleno
+        title: Storage por encima del 85%
+        condition: B
+        for: 10m
+        labels:
+          gravedad: alta
+        annotations:
+          summary: "{{ $labels.id }} al {{ printf \"%.1f\" $values.A.Value }}%"
+          description: >-
+            Cuando un storage se llena, las maquinas que escriben ahi se paran en
+            seco. Mira el panel 'Uso de disco (storages)'.
+        isPaused: false
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: pmx-prometheus
+            model:
+              refId: A
+              instant: true
+              editorMode: code
+              expr: 100 * pve_disk_usage_bytes{id=~"storage/.*"} / pve_disk_size_bytes{id=~"storage/.*"}
+              datasource: {type: prometheus, uid: pmx-prometheus}
+          - refId: B
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              datasource: {type: __expr__, uid: __expr__}
+              conditions:
+                - evaluator: {type: gt, params: [85]}
+
+      # --- 3. Un filesystem del propio nodo se llena ------------------------
+      # Distinto del anterior: aqui se llena el disco del HYPERVISOR, que es
+      # mucho peor. Con / lleno, Proxmox deja de poder escribir sus configs.
+      - uid: pmx-filesystem-lleno
+        title: Filesystem del nodo por encima del 90%
+        condition: B
+        for: 10m
+        labels:
+          gravedad: critica
+        annotations:
+          summary: "{{ $labels.mountpoint }} en {{ $labels.nodo }} al {{ printf \"%.1f\" $values.A.Value }}%"
+          description: >-
+            Es el disco del propio hypervisor. Con la raiz llena, Proxmox deja de
+            poder escribir su configuracion y empiezan fallos raros por todas partes.
+        isPaused: false
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: pmx-prometheus
+            model:
+              refId: A
+              instant: true
+              editorMode: code
+              expr: >-
+                100 * (1 - node_filesystem_avail_bytes{job="node",fstype!~"tmpfs|devtmpfs|overlay|squashfs|fuse.*"}
+                / node_filesystem_size_bytes{job="node",fstype!~"tmpfs|devtmpfs|overlay|squashfs|fuse.*"})
+              datasource: {type: prometheus, uid: pmx-prometheus}
+          - refId: B
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              datasource: {type: __expr__, uid: __expr__}
+              conditions:
+                - evaluator: {type: gt, params: [90]}
+
+      # --- 4. La RAM del nodo se agota --------------------------------------
+      - uid: pmx-ram-nodo
+        title: RAM del nodo por encima del 90%
+        condition: B
+        for: 10m
+        labels:
+          gravedad: alta
+        annotations:
+          summary: "{{ $labels.nodo }} al {{ printf \"%.1f\" $values.A.Value }}% de memoria"
+          description: >-
+            Con la RAM al limite llega el OOM killer, y en un hypervisor lo que
+            mata son maquinas enteras. Mira el sobrecompromiso de RAM en el
+            apartado Maquinas.
+        isPaused: false
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: pmx-prometheus
+            model:
+              refId: A
+              instant: true
+              editorMode: code
+              expr: 100 * (1 - node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"})
+              datasource: {type: prometheus, uid: pmx-prometheus}
+          - refId: B
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              datasource: {type: __expr__, uid: __expr__}
+              conditions:
+                - evaluator: {type: gt, params: [90]}
+
+      # --- 5. Una maquina que deberia estar encendida, no lo esta -----------
+      # 'Deberia' = tiene arranque automatico. Si alguien la apaga a proposito
+      # y quiere que siga apagada, lo correcto es quitarle el onboot; asi esta
+      # alerta deja de molestar sola.
+      - uid: pmx-maquina-caida
+        title: Maquina con arranque automatico que esta apagada
+        condition: B
+        for: 10m
+        labels:
+          gravedad: alta
+        annotations:
+          summary: "{{ $labels.id }} esta apagada y tiene arranque automatico"
+          description: >-
+            Tiene 'arranque al inicio' puesto, asi que se espera que este
+            encendida. O se cayo sola, o alguien la apago. Si la apagaste a
+            proposito, quitale el onboot y esta alerta se calla.
+        isPaused: false
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: pmx-prometheus
+            model:
+              refId: A
+              instant: true
+              editorMode: code
+              expr: >-
+                (pve_up{id=~"(qemu|lxc)/.*"} == 0)
+                and on(id, instance) (pve_onboot_status == 1)
+              datasource: {type: prometheus, uid: pmx-prometheus}
+          - refId: B
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              datasource: {type: __expr__, uid: __expr__}
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+
+      # --- 6. El nodo hace esperar a sus maquinas ---------------------------
+      # PSI, no porcentaje de CPU: un nodo al 100% de uso puede ir fino, y uno
+      # al 40% puede estar ahogando a todo el mundo. Lo que duele es la espera.
+      - uid: pmx-presion-cpu
+        title: Presion de CPU sostenida en el nodo
+        condition: B
+        for: 15m
+        labels:
+          gravedad: media
+        annotations:
+          summary: "{{ $labels.nodo }}: {{ printf \"%.0f\" $values.A.Value }}% del tiempo con tareas esperando CPU"
+          description: >-
+            No es uso de CPU, es espera. Lleva 15 minutos haciendo cola. Mira el
+            apartado de presion y el sobrecompromiso de vCPU para ver a quien le
+            esta tocando esperar.
+        isPaused: false
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: {from: 900, to: 0}
+            datasourceUid: pmx-prometheus
+            model:
+              refId: A
+              instant: true
+              editorMode: code
+              expr: rate(node_pressure_cpu_waiting_seconds_total{job="node"}[5m]) * 100
+              datasource: {type: prometheus, uid: pmx-prometheus}
+          - refId: B
+            relativeTimeRange: {from: 900, to: 0}
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              datasource: {type: __expr__, uid: __expr__}
+              conditions:
+                - evaluator: {type: gt, params: [40]}

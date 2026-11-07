@@ -158,6 +158,13 @@ scrape_configs:
       - targets: ['${IP_NODO}:9100']
         labels:
           nodo: '${IP_NODO}'
+    # node_systemd_unit_state son ~1000 series por nodo (una por unidad y
+    # estado) que no se miran en ningun panel: un 24% del total tirado. Se
+    # descarta al guardar, no al scrapear, para no tocar el hypervisor.
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'node_systemd_unit_state'
+        action: drop
 
   # Detalle por invitado desde la API de Proxmox.
   # El truco del relabel: el 'target' viaja como parametro ?target= y la
@@ -178,6 +185,13 @@ scrape_configs:
         target_label: instance
       - target_label: __address__
         replacement: 127.0.0.1:9221
+    # pve_ha_state y pve_lock_state publican UNA SERIE POR CADA ESTADO POSIBLE
+    # de cada maquina (unas 24 por maquina entre las dos) y valen 0 casi
+    # siempre. Ningun panel las usa. Con 134 invitados son miles de series.
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'pve_(ha_state|lock_state)'
+        action: drop
 EOF
 
 promtool check config /etc/prometheus/prometheus.yml
@@ -189,12 +203,21 @@ if [ $? -ne 0 ]; then
 fi
 echo "    OK  promtool valida la configuracion"
 
-# Retencion: 15 dias. En la flota DNS 30 dias llenaron el disco.
+# Retencion: por tiempo Y por tamano. Solo por tiempo no protege de nada: si
+# la flota crece, 15 dias pueden no caber, y cuando el disco se llena
+# Prometheus se para. El techo de tamano hace que borre lo viejo en su lugar.
+# Se calcula como la mitad del disco libre, con un minimo de 1 GB: Prometheus
+# necesita sitio extra para compactar.
 if [ -f /etc/default/prometheus ]; then
     cp -a /etc/default/prometheus "/etc/default/prometheus.orig-${TS}"
-    sed -i "s|^ARGS=.*|ARGS=\"--storage.tsdb.retention.time=${RETENCION}\"|" /etc/default/prometheus
-    grep -q '^ARGS=' /etc/default/prometheus || echo "ARGS=\"--storage.tsdb.retention.time=${RETENCION}\"" >> /etc/default/prometheus
-    echo "    retencion: $(grep '^ARGS=' /etc/default/prometheus)"
+    LIBRE_MB=$(df -Pm /var/lib/prometheus | awk 'NR==2{print $4}')
+    TECHO_MB=$(( ${LIBRE_MB:-2048} / 2 ))
+    [ "$TECHO_MB" -lt 1024 ] && TECHO_MB=1024
+    TECHO=${TECHO_TSDB:-${TECHO_MB}MB}
+    NUEVOS_ARGS="--storage.tsdb.retention.time=${RETENCION} --storage.tsdb.retention.size=${TECHO}"
+    sed -i "s|^ARGS=.*|ARGS=\"${NUEVOS_ARGS}\"|" /etc/default/prometheus
+    grep -q '^ARGS=' /etc/default/prometheus || echo "ARGS=\"${NUEVOS_ARGS}\"" >> /etc/default/prometheus
+    echo "    retencion: ${RETENCION} y como mucho ${TECHO} (disco libre: ${LIBRE_MB:-?} MB)"
 fi
 
 # -------------------------------------------------------- 6. grafana
@@ -224,6 +247,7 @@ echo
 echo "--- 7. Datasource y dashboard"
 install -d -m 0755 /etc/grafana/provisioning/datasources \
                    /etc/grafana/provisioning/dashboards \
+                   /etc/grafana/provisioning/alerting \
                    /var/lib/grafana/dashboards
 
 cat > /etc/grafana/provisioning/datasources/prometheus.yml <<'EOF'
@@ -270,6 +294,18 @@ else
     echo "             pct push <VMID> dashboards/proxmox-overview.json /root/proxmox-overview.json"
 fi
 chown -R grafana:grafana /var/lib/grafana/dashboards
+
+# Alertas. Definen CUANDO salta cada una; por donde te avisa (Telegram,
+# correo) se configura una vez en Grafana -> Alerting -> Contact points,
+# porque lleva un token o un SMTP que no puede vivir en el repo.
+if [ -f "$(dirname "$0")/alertas.yaml" ]; then
+    cp "$(dirname "$0")/alertas.yaml" /etc/grafana/provisioning/alerting/alertas.yaml
+    chown root:grafana /etc/grafana/provisioning/alerting/alertas.yaml
+    chmod 0640 /etc/grafana/provisioning/alerting/alertas.yaml
+    echo "    $(grep -c '^      - uid:' "$(dirname "$0")/alertas.yaml") reglas de alerta provisionadas"
+else
+    echo "    AVISO: no encontre alertas.yaml al lado de este script: sin alertas."
+fi
 
 # La maquina del stack en UTC, la vista en hora de Ecuador.
 if ! grep -q '^default_timezone' /etc/grafana/grafana.ini; then
