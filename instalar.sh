@@ -5,11 +5,18 @@
 #     | bash -s -- <pieza> [argumentos...]
 #
 # PIEZAS
-#   nodo        node-exporter + usuario PVEAuditor + token   -> EN EL NODO PROXMOX
-#   colectores  PSI, RAM real y disco de dentro por maquina  -> EN EL NODO PROXMOX
+#   nodo        TODO el lado del hypervisor y nada mas:      -> EN EL NODO PROXMOX
+#               node-exporter, usuario PVEAuditor, token y
+#               los dos recolectores. Al terminar te explica
+#               que hace falta una maquina para el stack.
+#   colectores  solo los recolectores, para reinstalarlos    -> EN EL NODO PROXMOX
+#               sueltos. 'nodo' ya los incluye.
 #   lxc         crea un LXC para el stack (OPCIONAL)         -> EN EL NODO PROXMOX
 #   stack       Prometheus + pve-exporter + Grafana          -> EN LA MAQUINA DEL STACK
 #   verificar   comprueba que hay datos, no solo servicios   -> EN LA MAQUINA DEL STACK
+#
+# El orden normal es: 'nodo' en el hypervisor -> creas una maquina (LXC, VM o
+# un servidor que ya tengas) -> 'stack' dentro de ella -> 'verificar'.
 #
 # El repo se deja en /root/proxmox-monitoring, nunca en /tmp. Si ya estaba, se
 # actualiza.
@@ -40,7 +47,9 @@ uso() {
  Uso:  ... | bash -s -- <pieza> [argumentos]
 
    nodo        [IP_DEL_STACK]                 en el NODO Proxmox
+               hace TODO el lado del hypervisor, recolectores incluidos
    colectores                                 en el NODO Proxmox
+               solo los recolectores; 'nodo' ya los instala
    lxc                                        en el NODO Proxmox (opcional)
                requiere IP y GW:
                ... | IP=192.0.2.20/24 GW=192.0.2.1 bash -s -- lxc
