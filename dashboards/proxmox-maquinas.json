@@ -1,0 +1,1074 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [],
+      "title": "Vision general",
+      "type": "link",
+      "url": "/d/proxmox-overview"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [],
+      "title": "Una sola maquina",
+      "type": "link",
+      "url": "/d/proxmox-maquina"
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Consumo de cada maquina",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "CPU - nucleos en uso",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmx-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 47,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "sortBy": "Max",
+          "sortDesc": true,
+          "width": 260
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc",
+          "maxHeight": 450
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmx-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "rate(pve_guest_cpu_seconds_total{nodo=\"$nodo\",name=~\"$maquina\"}[5m])",
+          "refId": "A",
+          "range": true,
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "description": "Nucleos consumidos de verdad por cada maquina, del cgroup. No es porcentaje: 2 = dos nucleos enteros."
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Memoria real en el host",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmx-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 47,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "sortBy": "Max",
+          "sortDesc": true,
+          "width": 260
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc",
+          "maxHeight": 450
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmx-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "pve_guest_memory_host_bytes{nodo=\"$nodo\",name=~\"$maquina\"}",
+          "refId": "A",
+          "range": true,
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "description": "memory.current del cgroup de cada maquina: lo que el nodo paga de verdad, overhead de QEMU incluido. No es el valor del balloon."
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Red - entrada",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmx-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 47,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "bps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "sortBy": "Max",
+          "sortDesc": true,
+          "width": 260
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc",
+          "maxHeight": 450
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmx-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "rate(pve_network_receive_bytes_total{instance=\"$nodo\"}[5m]) * 8 * on(id) group_left(name) pve_guest_info{instance=\"$nodo\",name=~\"$maquina\"} and on(id) (pve_up{instance=\"$nodo\"} == 1)",
+          "refId": "A",
+          "range": true,
+          "legendFormat": "{{name}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Red - salida",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmx-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 47,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "bps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "sortBy": "Max",
+          "sortDesc": true,
+          "width": 260
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc",
+          "maxHeight": 450
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmx-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "rate(pve_network_transmit_bytes_total{instance=\"$nodo\"}[5m]) * 8 * on(id) group_left(name) pve_guest_info{instance=\"$nodo\",name=~\"$maquina\"} and on(id) (pve_up{instance=\"$nodo\"} == 1)",
+          "refId": "A",
+          "range": true,
+          "legendFormat": "{{name}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Disco - lectura",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmx-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 47,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "sortBy": "Max",
+          "sortDesc": true,
+          "width": 260
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc",
+          "maxHeight": 450
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmx-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "rate(pve_disk_read_bytes_total{instance=\"$nodo\"}[5m]) * on(id) group_left(name) pve_guest_info{instance=\"$nodo\",name=~\"$maquina\"} and on(id) (pve_up{instance=\"$nodo\"} == 1)",
+          "refId": "A",
+          "range": true,
+          "legendFormat": "{{name}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Disco - escritura",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmx-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 47,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "sortBy": "Max",
+          "sortDesc": true,
+          "width": 260
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc",
+          "maxHeight": 450
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmx-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "rate(pve_disk_written_bytes_total{instance=\"$nodo\"}[5m]) * on(id) group_left(name) pve_guest_info{instance=\"$nodo\",name=~\"$maquina\"} and on(id) (pve_up{instance=\"$nodo\"} == 1)",
+          "refId": "A",
+          "range": true,
+          "legendFormat": "{{name}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Presion (PSI) de cada maquina",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Presion de CPU",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmx-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 8,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 47,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "sortBy": "Max",
+          "sortDesc": true,
+          "width": 260
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc",
+          "maxHeight": 450
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmx-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "rate(pve_guest_pressure_waiting_seconds_total{nodo=\"$nodo\",name=~\"$maquina\",recurso=\"cpu\"}[5m]) * 100",
+          "refId": "A",
+          "range": true,
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "description": "Sube en las maquinas que piden CPU y no la reciben. Con el nodo sobrecomprometido, aqui se ve cual lo esta sufriendo. Una linea por maquina: % del tiempo que CADA UNA estuvo parada esperando el recurso. Es lo que dice a quien le toca esperar cuando el nodo va justo."
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Presion de E/S",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmx-prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 27,
+        "w": 8,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 47,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "sortBy": "Max",
+          "sortDesc": true,
+          "width": 260
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc",
+          "maxHeight": 450
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmx-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "rate(pve_guest_pressure_waiting_seconds_total{nodo=\"$nodo\",name=~\"$maquina\",recurso=\"io\"}[5m]) * 100",
+          "refId": "A",
+          "range": true,
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "description": "Sube en las maquinas que esperan al disco. Si varias comparten almacenamiento, esto dice a cual le toca esperar. Una linea por maquina: % del tiempo que CADA UNA estuvo parada esperando el recurso. Es lo que dice a quien le toca esperar cuando el nodo va justo."
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Presion de memoria",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmx-prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 27,
+        "w": 8,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 47,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "sortBy": "Max",
+          "sortDesc": true,
+          "width": 260
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc",
+          "maxHeight": 450
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmx-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "rate(pve_guest_pressure_waiting_seconds_total{nodo=\"$nodo\",name=~\"$maquina\",recurso=\"memory\"}[5m]) * 100",
+          "refId": "A",
+          "range": true,
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "description": "Sube cuando el kernel pelea por recuperar memoria de esa maquina. Avisa antes del OOM. Una linea por maquina: % del tiempo que CADA UNA estuvo parada esperando el recurso. Es lo que dice a quien le toca esperar cuando el nodo va justo."
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Disco usado de cada maquina",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 13,
+      "type": "bargauge",
+      "title": "Disco usado real (%)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmx-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 24,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "minVizHeight": 16,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmx-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "(100 * sum by (name) (pve_guest_fs_used_bytes{nodo=\"$nodo\",name=~\"$maquina\"}) / sum by (name) (pve_guest_fs_size_bytes{nodo=\"$nodo\",name=~\"$maquina\"})) or (100 * sum by (name) (pve_disk_usage_bytes{id=~\"lxc/.*\",instance=\"$nodo\"} * on(id) group_left(name) pve_guest_info{instance=\"$nodo\",name=~\"$maquina\"} and on(id) (pve_up{instance=\"$nodo\"} == 1)) / sum by (name) (pve_disk_size_bytes{id=~\"lxc/.*\",instance=\"$nodo\"} * on(id) group_left(name) pve_guest_info{instance=\"$nodo\",name=~\"$maquina\"} and on(id) (pve_up{instance=\"$nodo\"} == 1)))",
+          "refId": "A",
+          "range": true,
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "description": "Uso real de DENTRO de cada maquina. En una VM lo contesta su qemu-guest-agent; en un LXC lo sabe el nodo. Las que no aparecen estan apagadas o no tienen agente (RouterOS/CHR nunca lo tendra)."
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": [
+    "proxmox"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "nodo",
+        "label": "Nodo",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "pmx-prometheus"
+        },
+        "query": "label_values(pve_node_info, instance)",
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "sort": 1
+      },
+      {
+        "name": "maquina",
+        "label": "Maquinas",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "pmx-prometheus"
+        },
+        "query": "label_values(pve_guest_info{instance=\"$nodo\"}, name)",
+        "refresh": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {},
+        "options": [],
+        "sort": 1
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "America/Guayaquil",
+  "title": "Proxmox - todas las maquinas",
+  "uid": "proxmox-maquinas",
+  "version": 1,
+  "weekStart": ""
+}

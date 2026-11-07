@@ -1,0 +1,9 @@
+*.bak
+*.tar.gz
+.env
+token.txt
+
+# salidas de los recolectores y cache de python
+*.prom
+*.prom.tmp
+__pycache__/
