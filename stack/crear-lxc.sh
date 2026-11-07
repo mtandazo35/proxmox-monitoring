@@ -188,19 +188,50 @@ else
     exit 1
 fi
 
+# ------------------------------------------------- 5. dejarlo usable
+# La plantilla Debian NO trae curl. Sin el, el one-liner que viene despues no
+# se puede ni descargar dentro del contenedor. Comprobado en un Debian 13
+# recien creado: wget y python3 si estan; curl, git y gpg no.
+echo
+echo "--- 5. Dejandolo usable (curl y certificados)"
+pct exec "$VMID" -- sh -c 'DEBIAN_FRONTEND=noninteractive apt-get update -qq && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    curl ca-certificates >/dev/null 2>&1'
+if pct exec "$VMID" -- sh -c 'command -v curl >/dev/null 2>&1'; then
+    echo "    OK  curl disponible dentro del contenedor"
+else
+    echo "    AVISO: no se pudo instalar curl dentro del contenedor."
+    echo "           El one-liner no funcionara ahi; usa el 'pct push' de abajo."
+fi
+
 # ------------------------------------------------- resumen
 echo
 echo "=============================================================="
 echo " Contenedor $VMID ($NOMBRE) listo en $IP_SOLA"
 echo "=============================================================="
-echo " Siguiente paso - instalar el stack dentro:"
-echo
-echo "   pct push $VMID install-stack.sh /root/install-stack.sh"
-echo "   pct push $VMID ../dashboards/proxmox-overview.json /root/proxmox-overview.json"
-echo "   pct exec $VMID -- chmod +x /root/install-stack.sh"
-echo "   pct exec $VMID -- /root/install-stack.sh <IP_NODO> <USUARIO!TOKEN> <VALOR>"
-echo
-echo " Los tres datos los imprimio ../nodo/install-nodo.sh"
+cat <<FIN
+
+ SIGUIENTE PASO: instalar el stack DENTRO de este contenedor.
+
+ Los tres datos los imprimio install-nodo.sh en el nodo. Desde el nodo:
+
+   pct exec $VMID -- bash -c "curl -fsSL \\
+     https://raw.githubusercontent.com/mtandazo35/proxmox-monitoring/main/instalar.sh \\
+     | bash -s -- stack <IP_NODO> '<USUARIO!TOKEN>' '<VALOR>'"
+
+ O entrando al contenedor (pct enter $VMID) y lanzando ahi ese mismo curl.
+
+ Si prefieres no canalizar nada a bash, copia los ficheros a mano. OJO: hay
+ que empujar los TRES dashboards, no solo el general, o Grafana se quedara
+ con uno de tres:
+
+   pct push $VMID install-stack.sh /root/install-stack.sh
+   for d in ../dashboards/proxmox-*.json; do
+       pct push $VMID "\$d" "/root/\$(basename "\$d")"
+   done
+   pct exec $VMID -- chmod +x /root/install-stack.sh
+   pct exec $VMID -- /root/install-stack.sh <IP_NODO> '<USUARIO!TOKEN>' '<VALOR>'
+FIN
 echo
 echo " Deshacer todo esto: pct stop $VMID && pct destroy $VMID"
 echo "=============================================================="
