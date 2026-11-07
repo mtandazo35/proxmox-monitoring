@@ -2,7 +2,13 @@
 # -*- coding: utf-8 -*-
 """verificar-dashboard.py - comprueba que CADA consulta de CADA panel devuelve datos.
 
-Se corre DENTRO del contenedor. Solo lee: no cambia nada.
+Se corre EN LA MAQUINA DEL STACK, sea un LXC, una VM o un servidor aparte.
+Solo lee: no cambia nada.
+
+    scp verificar-dashboard.py root@<IP_STACK>:/root/
+    ssh root@<IP_STACK> python3 /root/verificar-dashboard.py [ruta-del-json]
+
+Atajo si esa maquina es un LXC del propio nodo:
 
     pct push <VMID> verificar-dashboard.py /root/verificar-dashboard.py
     pct exec <VMID> -- python3 /root/verificar-dashboard.py [ruta-del-json]

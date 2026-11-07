@@ -16,71 +16,150 @@ pasada?", porque nadie lo guardó.
 ## Arquitectura
 
 ```
-   NODO PROXMOX                          LXC "pmx-monitor"
+   NODO PROXMOX                          MAQUINA DEL STACK
+   (lo que se vigila)                    (LXC, VM o un servidor que ya tengas)
   ┌────────────────────┐                ┌──────────────────────────────────┐
   │ node-exporter      │◄───── scrape ──┤ prometheus          :9090        │
   │   :9100            │                │   retención 15 días              │
-  │                    │                │                                 │
+  │ + 2 recolectores   │                │                                  │
+  │                    │                │                                  │
   │ API :8006 ◄────────┼─── lectura ────┤ prometheus-pve-exporter  :9221   │
   │   token PVEAuditor │                │   (token de solo lectura)        │
-  │   (SOLO LECTURA)   │                │                                 │
+  │   (SOLO LECTURA)   │                │                                  │
   └────────────────────┘                │ grafana             :3000        │
                                         └──────────────────────────────────┘
 ```
 
-**En el hypervisor va un solo paquete** (`prometheus-node-exporter`) más un usuario de API de
-solo lectura. Todo lo demás vive en el contenedor: si el stack se cae, o se borra, el nodo no
-se enteró.
-
-**Por qué LXC y no VM:** un LXC no reserva la RAM, es un límite de cgroup. En un host con poca
-memoria libre eso importa — lo que el stack no use se queda disponible para el host. Una VM sin
-`balloon` se la queda fija.
+**En el hypervisor va un solo paquete** (`prometheus-node-exporter`), dos recolectores que son
+scripts sin servicio propio, y un usuario de API de solo lectura. Todo lo demás vive en la
+máquina del stack: si el stack se cae, o se borra, el nodo no se enteró.
 
 **Dos exporters porque miden cosas distintas:**
 
 | | node-exporter | pve-exporter |
 |---|---|---|
 | Qué ve | el sistema operativo del host | la API de Proxmox |
-| CPU/RAM | del nodo, real | de cada invitado |
+| CPU/RAM | del nodo, real | de cada máquina |
 | Disco | cada filesystem del host, real | storages del nodo, real |
 | Extra | ZFS ARC, presión de E/S, OOM kills | encendidas/apagadas, plantillas |
+
+## Qué es cada pieza y dónde corre
+
+Esto es lo que hay que tener claro antes de instalar nada: **cada script corre en un sitio y
+solo en ese sitio.**
+
+| Pieza | Dónde se ejecuta | Qué hace |
+|---|---|---|
+| `nodo/install-nodo.sh` | **en el nodo Proxmox** | instala `node-exporter`, crea el usuario `prometheus@pve` con rol `PVEAuditor` y saca un token |
+| `nodo/install-colectores.sh` | **en el nodo Proxmox** | instala los dos recolectores propios y sus timers |
+| `nodo/pve-cgroup-collector.py` | *(lo instala el anterior)* | PSI, RAM real y CPU de cada máquina, leyendo `/sys/fs/cgroup` |
+| `nodo/pve-fsinfo-collector.py` | *(lo instala el anterior)* | disco real de dentro de cada VM, vía su `qemu-guest-agent` |
+| `stack/crear-lxc.sh` | **en el nodo Proxmox**, opcional | atajo para crear un LXC donde meter el stack. **No hace falta si eliges otra cosa** |
+| `stack/install-stack.sh` | **en la máquina del stack** | Prometheus + pve-exporter + Grafana, y provisiona los dashboards |
+| `stack/verificar.sh` | **en la máquina del stack** | comprueba que hay datos, no solo servicios arrancados |
+| `stack/verificar-dashboard.py` | **en la máquina del stack** | lanza cada consulta de cada panel |
+| `dashboards/*.json` | **se copian a la máquina del stack** | los paneles; los lee Grafana al arrancar |
+| `dashboards/plantillas/` | **en tu PC** | generan esos `.json`. Los `.json` no se editan a mano |
+
+### Qué se carga en cada sitio
+
+| En el nodo | En la máquina del stack |
+|---|---|
+| `install-nodo.sh` | `install-stack.sh` |
+| `install-colectores.sh` + los dos `.py` | los tres `dashboards/*.json` |
+| | `verificar.sh` y `verificar-dashboard.py` |
+
+El nodo **no** necesita los dashboards. La máquina del stack **no** necesita los recolectores.
+
+## Dónde poner el stack: tú eliges
+
+El stack es **Debian normal**: `apt`, `systemd` y tres servicios. `install-stack.sh` no sabe
+ni le importa si está dentro de un contenedor, de una VM o de una máquina física.
+
+**Requisitos de esa máquina, sea cual sea:**
+
+- Debian 12 o 13, con acceso `root`
+- 2 núcleos y ~1,5 GB de RAM
+- 8 GB de disco para empezar. Con un nodo pequeño, 15 días de retención ocupan ~1 GB; con una
+  flota de cien y pico máquinas hay que contar bastante más y poner un techo de tamaño
+- salida a internet, para los paquetes de Debian y el repositorio de Grafana
+- que alcance el `:9100` y el `:8006` del nodo
+
+| Opción | Cuándo elegirla | Qué cuesta |
+|---|---|---|
+| **LXC** en el propio nodo | quieres lo más ligero y el nodo va justo de RAM: un LXC **no reserva** memoria, es un límite de cgroup, así que lo que el stack no use queda para el host | comparte kernel con el nodo; si el nodo cae, el stack cae con él |
+| **VM** en el propio nodo | la prefieres aislada del kernel del host, o quieres migrarla y respaldarla como cualquier otra VM. Con `qemu-guest-agent` dentro, el propio dashboard verá su disco real | sin `balloon` se queda la RAM fija; arranca más lento y ocupa más disco |
+| **Una máquina que ya tengas** (otro servidor, una VPS) | **la más sensata si vigilas varios nodos** | una máquina más que mantener |
+
+**Una observación que conviene no saltarse:** si el stack vive dentro del nodo que vigila, el
+día que ese nodo se caiga te quedas **sin histórico justo cuando lo necesitas**, y sin la
+gráfica que te diría qué pasó antes de la caída. Para un laboratorio da igual; para vigilar
+producción, el stack debería estar fuera.
+
+Si eliges LXC, `crear-lxc.sh` te lo monta. Si eliges VM o una máquina existente, **aquí no hay
+script y no hace falta**: prepara la máquina como prepares cualquier otra y pasa al paso 3.
 
 ## Instalación
 
 ### 1. En el nodo Proxmox
 
 ```bash
-scp nodo/install-nodo.sh root@<IP_NODO>:/root/     # los instaladores van a /root
-ssh root@<IP_NODO> 'chmod +x /root/install-nodo.sh && /root/install-nodo.sh'
+scp -r nodo root@<IP_NODO>:/root/proxmox-monitoring/
+ssh root@<IP_NODO> 'cd /root/proxmox-monitoring/nodo && chmod +x *.sh && ./install-nodo.sh'
 ```
 
 Instala node-exporter, crea `prometheus@pve` con rol `PVEAuditor`, saca un token, **comprueba
 que el token lee la API y que NO puede escribir**, e imprime los tres datos que necesita el
 paso 3. Respalda `user.cfg` y `token.cfg` en `/root/backups/` antes de tocar nada.
 
-Si el nodo tiene UFW activo, hay que pasarle la IP del stack para que abra el `:9100`:
-`./install-nodo.sh 192.0.2.20`.
+Si el nodo tiene UFW activo, hay que pasarle la IP de la máquina del stack para que abra el
+`:9100`: `./install-nodo.sh 192.0.2.20`.
 
-### 2. Crear el contenedor (también en el nodo)
+Después, los recolectores por máquina (PSI, RAM real, disco de dentro de las VM):
 
 ```bash
-scp stack/crear-lxc.sh stack/install-stack.sh dashboards/proxmox-overview.json root@<IP_NODO>:/root/
-ssh root@<IP_NODO> 'cd /root && chmod +x crear-lxc.sh && IP=192.0.2.20/24 GW=192.0.2.1 VLAN=78 ./crear-lxc.sh'
+ssh root@<IP_NODO> 'cd /root/proxmox-monitoring/nodo && ./install-colectores.sh'
 ```
 
-Antes de crear nada comprueba tres cosas: que el VMID esté libre, que **la IP no responda a
-ping**, y que al host le queden al menos 512 MB de margen después de dar la RAM al contenedor.
+### 2. La máquina donde vivirá el stack
 
-Valores por defecto: VMID `111`, 2 núcleos, 1536 MB, 8 GB en `local-lvm`. Se cambian por
-variable de entorno (`RAM=1024 ./crear-lxc.sh`).
-
-### 3. El stack dentro del contenedor
+Lo que decidiste en el apartado anterior. Si es un **LXC** en el propio nodo, hay atajo:
 
 ```bash
-pct push 111 /root/install-stack.sh /root/install-stack.sh
-pct push 111 /root/proxmox-overview.json /root/proxmox-overview.json
-pct exec 111 -- chmod +x /root/install-stack.sh
-pct exec 111 -- /root/install-stack.sh <IP_NODO> 'prometheus@pve!monitoring' '<VALOR_DEL_TOKEN>'
+scp stack/crear-lxc.sh root@<IP_NODO>:/root/
+ssh root@<IP_NODO> 'chmod +x /root/crear-lxc.sh && IP=192.0.2.20/24 GW=192.0.2.1 VLAN=78 /root/crear-lxc.sh'
+```
+
+`IP` y `GW` son obligatorias a propósito: una IP por defecto acaba creando el contenedor en la
+red de otro. Antes de crear nada comprueba que el VMID esté libre, que **la IP no responda a
+ping**, y que al host le queden al menos 512 MB de margen.
+
+Valores por defecto: VMID `111`, 2 núcleos, 1536 MB, 8 GB en `local-lvm`. Se cambian por
+variable de entorno (`RAM=1024 VMID=112 NOMBRE=monitor ./crear-lxc.sh`).
+
+Si es una **VM o una máquina que ya tienes**, no hay nada que correr aquí: basta con que
+cumpla los requisitos de arriba.
+
+### 3. El stack, en esa máquina
+
+Vale para cualquiera de las tres opciones:
+
+```bash
+scp stack/install-stack.sh dashboards/*.json root@<IP_STACK>:/root/
+ssh root@<IP_STACK> 'chmod +x /root/install-stack.sh && \
+    /root/install-stack.sh <IP_NODO> "prometheus@pve!monitoring" "<VALOR_DEL_TOKEN>"'
+```
+
+Los tres datos los imprimió `install-nodo.sh` al terminar.
+
+Si esa máquina es un LXC del propio nodo y aún no le has dado acceso por SSH, el mismo paso
+sin red de por medio:
+
+```bash
+pct push <VMID> install-stack.sh /root/install-stack.sh
+for d in dashboards/proxmox-*.json; do pct push <VMID> "$d" "/root/$(basename "$d")"; done
+pct exec <VMID> -- chmod +x /root/install-stack.sh
+pct exec <VMID> -- /root/install-stack.sh <IP_NODO> 'prometheus@pve!monitoring' '<VALOR_DEL_TOKEN>'
 ```
 
 Al terminar imprime la URL de Grafana y una contraseña de admin generada al azar, que **no se
@@ -89,28 +168,27 @@ vuelve a mostrar**: al gestor de contraseñas.
 ### 4. Verificar (solo lectura)
 
 ```bash
-pct push 111 /root/verificar.sh /root/verificar.sh
-pct exec 111 -- bash /root/verificar.sh
-
-pct push 111 /root/verificar-dashboard.py /root/verificar-dashboard.py
-pct exec 111 -- python3 /root/verificar-dashboard.py
+scp stack/verificar.sh stack/verificar-dashboard.py root@<IP_STACK>:/root/
+ssh root@<IP_STACK> 'bash /root/verificar.sh'
+ssh root@<IP_STACK> 'python3 /root/verificar-dashboard.py'
 ```
 
 `verificar.sh` comprueba el stack: servicios, con qué config corre Prometheus de verdad,
 targets y ocho consultas con datos.
 
-`verificar-dashboard.py` comprueba **el dashboard**: saca las expresiones de todos sus
-paneles del JSON provisionado, resuelve la variable `$nodo` y lanza cada consulta contra
-Prometheus. Sale con código distinto de cero si algún panel se quedaría vacío. Que un
-dashboard **cargue** no significa que **muestre algo**: un panel con una consulta mal escrita
-sale en blanco y no deja un solo error en ninguna parte.
+`verificar-dashboard.py` comprueba **el dashboard**: saca las expresiones de todos sus paneles
+del JSON provisionado, resuelve la variable `$nodo` y lanza cada consulta contra Prometheus.
+Sale con código distinto de cero si algún panel se quedaría vacío. Que un dashboard **cargue**
+no significa que **muestre algo**: un panel con una consulta mal escrita sale en blanco y no
+deja un solo error en ninguna parte.
 
-Se le puede pasar otro dashboard y **forzar el valor de una variable**, útil cuando la
-primera serie que devuelve Prometheus no es la que interesa (una máquina apagada no tiene ni
-cgroup ni agente, así que medio dashboard saldría vacío con razón):
+Se le puede pasar otro dashboard y **forzar el valor de una variable**, útil cuando la primera
+serie que devuelve Prometheus no es la que interesa (una máquina apagada no tiene ni cgroup ni
+agente, así que medio dashboard saldría vacío con razón):
 
 ```bash
-pct exec 111 -- env VAR_MAQUINA=<maquina-encendida> python3 /root/verificar-dashboard.py     /var/lib/grafana/dashboards/proxmox-maquina.json
+ssh root@<IP_STACK> 'VAR_MAQUINA=<maquina-encendida> python3 /root/verificar-dashboard.py \
+    /var/lib/grafana/dashboards/proxmox-maquina.json'
 ```
 
 También valida **cada id de unidad** contra el build de Grafana. Si una unidad no existe,
@@ -285,9 +363,15 @@ de verdad, y si no, el panel dice **"No data"**, que es la verdad.
 
 | Qué | Cómo |
 |---|---|
-| Todo el stack | `pct stop 111 && pct destroy 111` (desde el nodo) |
-| Solo los paquetes, conservando el LXC | `stack/desinstalar-stack.sh` dentro del contenedor |
-| El nodo: exporter, usuario y token | `nodo/desinstalar-nodo.sh` en el nodo |
+| Los paquetes del stack, conservando la máquina | `stack/desinstalar-stack.sh`, en la máquina del stack |
+| La máquina entera, si era un LXC | `pct stop <VMID> && pct destroy <VMID>`, desde el nodo |
+| La máquina entera, si era una VM | `qm stop <VMID> && qm destroy <VMID>`, desde el nodo |
+| La máquina entera, si era un servidor tuyo | lo que hagas normalmente; el stack no deja nada fuera de sus paquetes |
+| Los recolectores del nodo | `nodo/desinstalar-colectores.sh`, en el nodo |
+| El nodo: exporter, usuario y token | `nodo/desinstalar-nodo.sh`, en el nodo |
+
+Dentro de las máquinas vigiladas **nunca se instaló nada**, así que ahí no hay nada que
+deshacer.
 
 ## Trampas que ya están resueltas en los scripts
 
@@ -301,7 +385,7 @@ de verdad, y si no, el panel dice **"No data"**, que es la verdad.
   manda siempre al exporter local. Sin ese relabel, Prometheus intentaría scrapear un `:9221`
   en el propio Proxmox, que no existe.
 - **Retención de 15 días, no 30.** En la flota DNS 30 días llenaron el disco.
-- **Zona horaria.** El contenedor se queda en UTC y es Grafana quien muestra hora de Ecuador
+- **Zona horaria.** La máquina del stack se queda en UTC y es Grafana quien muestra hora de Ecuador
   (`default_timezone = America/Guayaquil`): así las series no se mueven si cambia el huso.
 - **`promtool check config` antes de arrancar**, y si no valida se restaura el original.
 - **El repo de Grafana se escribe en un `.list`.** apt solo lee `*.list` y `*.sources`; un
@@ -309,17 +393,35 @@ de verdad, y si no, el panel dice **"No data"**, que es la verdad.
 
 ## Lo que este montaje NO puede darte
 
-**El uso de disco dentro de una VM.** Para una VM, la API de Proxmox reporta el **tamaño del
-disco asignado**, no lo ocupado por el filesystem de dentro: la columna sale casi siempre al
-100% y no significa nada. Para un LXC sí es uso real, porque el filesystem lo gestiona el nodo.
+**El disco de una VM sin `qemu-guest-agent`.** Con agente sí se ve, y es lo que hace
+`pve-fsinfo-collector.py`. Sin él no hay forma: para el hypervisor ese disco es un bloque y el
+filesystem de dentro solo lo entiende el sistema del invitado. Una VM de **RouterOS/CHR no lo
+tendrá nunca**, porque no existe `qemu-guest-agent` para CHR. En la tabla aparece como
+`AGENTE: NO` y la celda de disco queda **en blanco**, que es la verdad: *no se sabe*, no *cero*.
 
-Para ver el disco real dentro de una VM hacen falta `qemu-guest-agent` en el invitado (ya lo
-instala `deploy-vm.sh` en las VMs nuevas) o un node-exporter dentro. El dashboard lleva un
-panel de aviso para que esa columna no se lea mal, y el consumo real de almacenamiento sí se ve
-en el panel de **storages**.
+**Lo que pasa dentro de una máquina.** Procesos, servicios, logs, qué proceso concreto se está
+comiendo la CPU. Esto mide desde fuera. Para eso haría falta un `node-exporter` dentro de cada
+invitado, que es otro proyecto y otra decisión.
+
+**La presión que siente el invitado por dentro.** `pve_guest_pressure_*` es la presión del
+**cgroup de esa máquina en el host**: cuánto la está haciendo esperar el nodo. No es el PSI que
+mide el kernel de dentro de la VM, que puede ser otro.
+
+**Logs.** No hay Loki ni nada parecido. Esto son métricas.
+
+**Avisos.** No hay alertas configuradas: es una pantalla que hay que mirar. Grafana trae
+alerting propio y no haría falta Alertmanager, pero **todavía no está montado**.
+
+**Retención con techo de tamaño.** Hay límite por tiempo (15 días) pero no por tamaño, así que
+en un disco pequeño conviene añadir `--storage.tsdb.retention.size` antes de llevarlo a una
+flota grande.
 
 ## Añadir más nodos
 
-Correr `nodo/install-nodo.sh` en el nodo nuevo y añadir dos entradas a
-`/etc/prometheus/prometheus.yml` del contenedor: su `:9100` en el job `node` y su IP en el job
-`pve`. El dashboard tiene un selector de nodo arriba, así que no hay que duplicar paneles.
+Correr `nodo/install-nodo.sh` y `nodo/install-colectores.sh` en el nodo nuevo, y añadir dos
+entradas a `/etc/prometheus/prometheus.yml` **de la máquina del stack**: su `:9100` en el job
+`node` y su IP en el job `pve`. Los tres dashboards tienen un selector de nodo arriba, así que
+no hay que duplicar ni un panel.
+
+Con varios nodos, lo razonable es que **el stack no viva dentro de ninguno de ellos**: ver
+*Dónde poner el stack*.

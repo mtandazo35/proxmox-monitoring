@@ -253,16 +253,25 @@ providers:
       path: /var/lib/grafana/dashboards
 EOF
 
-if [ -f /root/proxmox-overview.json ]; then
-    cp /root/proxmox-overview.json /var/lib/grafana/dashboards/proxmox-overview.json
-    echo "    dashboard copiado"
+# Todos los dashboards que haya, no solo el general.
+N_DASH=0
+for d in /root/proxmox-*.json; do
+    [ -f "$d" ] || continue
+    cp "$d" "/var/lib/grafana/dashboards/$(basename "$d")"
+    N_DASH=$((N_DASH + 1))
+done
+if [ "$N_DASH" -gt 0 ]; then
+    echo "    $N_DASH dashboard(s) copiados"
 else
-    echo "    AVISO: no encontre /root/proxmox-overview.json."
-    echo "           Empujalo con: pct push <VMID> ../dashboards/proxmox-overview.json /root/proxmox-overview.json"
+    echo "    AVISO: no encontre ningun /root/proxmox-*.json."
+    echo "           Copialos a /root/ de esta maquina y vuelve a correr el script:"
+    echo "             scp dashboards/*.json root@\$(hostname -I | awk '{print \$1}'):/root/"
+    echo "           o, si esta maquina es un LXC del nodo:"
+    echo "             pct push <VMID> dashboards/proxmox-overview.json /root/proxmox-overview.json"
 fi
 chown -R grafana:grafana /var/lib/grafana/dashboards
 
-# El contenedor en UTC, la vista en hora de Ecuador.
+# La maquina del stack en UTC, la vista en hora de Ecuador.
 if ! grep -q '^default_timezone' /etc/grafana/grafana.ini; then
     sed -i "s|^;default_timezone =.*|default_timezone = ${TZ_VISTA}|" /etc/grafana/grafana.ini
 fi

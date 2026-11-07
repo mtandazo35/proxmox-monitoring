@@ -1,10 +1,15 @@
 #!/bin/bash
-# crear-lxc.sh - crea el contenedor donde vive el stack de monitoreo.
+# crear-lxc.sh - OPCIONAL: crea un LXC donde meter el stack de monitoreo.
+#
+# El stack NO necesita un LXC. install-stack.sh corre en cualquier Debian 12 o
+# 13 con acceso root: una VM, un servidor que ya tengas o una VPS. Este script
+# es solo un atajo para quien elija LXC; si prefieres una VM, no lo uses y pasa
+# directamente a install-stack.sh en esa VM.
 #
 # Se corre EN EL NODO PROXMOX. Crea un LXC Debian 13 sin privilegios y lo deja
 # arrancado con red, listo para install-stack.sh.
 #
-# Por que LXC y no VM: un LXC no reserva la RAM, es un limite de cgroup. En un
+# Que gana un LXC: no reserva la RAM, es un limite de cgroup. En un
 # host con poca memoria libre eso importa: lo que el stack
 # no use se queda en el host. Una VM sin balloon se la queda fija.
 #

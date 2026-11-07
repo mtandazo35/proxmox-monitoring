@@ -1,8 +1,12 @@
 #!/bin/bash
 # verificar.sh - comprueba que el stack no solo este "activo", sino que de datos.
 #
-# Se corre DENTRO del contenedor. Solo lee: no cambia nada.
+# Se corre EN LA MAQUINA DEL STACK, sea un LXC, una VM o un servidor aparte.
+# Solo lee: no cambia nada.
 #
+#   scp verificar.sh root@<IP_STACK>:/root/ && ssh root@<IP_STACK> bash /root/verificar.sh
+#
+# Atajo si esa maquina es un LXC del propio nodo:
 #   pct push <VMID> verificar.sh /root/verificar.sh
 #   pct exec <VMID> -- bash /root/verificar.sh
 #
