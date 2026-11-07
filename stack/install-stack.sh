@@ -389,7 +389,11 @@ if [ "$TARGETS_OK" -ne 1 ]; then
     FALLOS=$((FALLOS + 1))
 fi
 
-IP_LXC=$(hostname -I | awk '{print $1}')
+IP_STACK=$(hostname -I | awk '{print $1}')
+VER_GRAFANA=$(dpkg-query -W -f='${Version}' grafana 2>/dev/null)
+VER_PROM=$(dpkg-query -W -f='${Version}' prometheus 2>/dev/null)
+PANELES=$(ls -1 /var/lib/grafana/dashboards/*.json 2>/dev/null | wc -l)
+
 echo
 echo "=============================================================="
 if [ "$FALLOS" -eq 0 ]; then
@@ -397,11 +401,55 @@ if [ "$FALLOS" -eq 0 ]; then
 else
     echo " TERMINADO CON $FALLOS FALLO(S) - mira arriba"
 fi
-echo "=============================================================="
-echo "   Grafana     : http://${IP_LXC}:3000   admin / ${GF_PASS}"
-echo "   Prometheus  : http://${IP_LXC}:9090"
-echo "   Registro    : $LOG"
-echo "   Deshacer    : ./desinstalar-stack.sh"
-echo
-echo " Guarda la contrasena en tu gestor: no se vuelve a mostrar."
-echo "=============================================================="
+cat <<FIN
+==============================================================
+
+ LO QUE HA QUEDADO INSTALADO EN ESTA MAQUINA ($(hostname)):
+
+   prometheus ${VER_PROM:-?}            :9090   guarda el historico, 15 dias
+   prometheus-pve-exporter              :9221   traduce la API de Proxmox
+   grafana ${VER_GRAFANA:-?}            :3000   los paneles
+
+ Y configurado solo, sin tocar nada a mano:
+
+   datasource  "Prometheus" (uid pmx-prometheus), marcado por omision
+   dashboards  $PANELES cargados y provisionados desde
+               /var/lib/grafana/dashboards:
+FIN
+for d in /var/lib/grafana/dashboards/*.json; do
+    [ -f "$d" ] || continue
+    T=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['title'])" "$d" 2>/dev/null)
+    printf '                 - %-26s %s\n' "$(basename "$d")" "${T:-}"
+done
+cat <<FIN
+
+   zona horaria de la vista: ${TZ_VISTA}
+               (la maquina se queda en UTC; solo cambia como se pinta)
+
+==============================================================
+ COMO ENTRAR
+==============================================================
+
+   Grafana     : http://${IP_STACK}:3000
+   Usuario     : admin
+   Contrasena  : ${GF_PASS}
+
+ GUARDA ESA CONTRASENA EN TU GESTOR: no se vuelve a mostrar. Grafana te la
+ hara cambiar en el primer acceso, que es lo correcto. Si la pierdes:
+   grafana cli --homepath /usr/share/grafana admin reset-admin-password '<NUEVA>'
+
+ Los dashboards estan en el menu Dashboards, carpeta "Proxmox". Empieza por
+ "Proxmox - vision general"; desde su tabla de Maquinas se pincha un nombre y
+ se abre el detalle de esa maquina.
+
+ OJO: estan provisionados desde fichero. Si los editas por la interfaz, el
+ cambio se pierde cuando Grafana recarga la provision. Para cambiarlos de
+ verdad se tocan las plantillas del repo (dashboards/plantillas/) y se
+ regeneran. Para trastear sin perder nada, "Save as..." con otro nombre.
+
+   Prometheus  : http://${IP_STACK}:9090   (sin contrasena: no lo expongas)
+   Registro    : $LOG
+   Comprobar   : ./verificar.sh  y  python3 ./verificar-dashboard.py
+   Deshacer    : ./desinstalar-stack.sh
+==============================================================
+FIN
